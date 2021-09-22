@@ -20,12 +20,14 @@ class NeuConNet(nn.Module):
     def __init__(self, cfg):
         super(NeuConNet, self).__init__()
         self.cfg = cfg
-        self.n_scales = len(cfg.THRESHOLDS) - 1
+        self.n_scales = len(cfg.THRESHOLDS) - 1 # MODEL.THRESHOLDS = [0, 0, 0]，默认结果输出为2
 
-        alpha = int(self.cfg.BACKBONE2D.ARC.split('-')[-1])
+        alpha = int(self.cfg.BACKBONE2D.ARC.split('-')[-1]) # alpha默认结果为1
+        # ch_in = [81, 139, 75, 51]
         ch_in = [80 * alpha + 1, 96 + 40 * alpha + 2 + 1, 48 + 24 * alpha + 2 + 1, 24 + 24 + 2 + 1]
         channels = [96, 48, 24]
 
+        # 如果进行融合
         if self.cfg.FUSION.FUSION_ON:
             # GRU Fusion
             self.gru_fusion = GRUFusion(cfg, channels)

@@ -10,6 +10,7 @@ class GRUFusion(nn.Module):
     Two functionalities of this class:
     1. GRU Fusion module as in the paper. Update hidden state features with ConvGRU.
     2. Substitute TSDF in the global volume when direct_substitute = True.
+        当direct_Substitute=True时，替换全局volume中的TSDF
     """
 
     def __init__(self, cfg, ch_in=None, direct_substitute=False):
@@ -24,9 +25,11 @@ class GRUFusion(nn.Module):
             self.feat_init = 1
         else:
             # features
+            # ch_in = [96, 48, 24]
             self.ch_in = ch_in
             self.feat_init = 0
 
+        # n_scales = 3-1 = 2
         self.n_scales = len(cfg.THRESHOLDS) - 1
         self.scene_name = [None, None, None]
         self.global_origin = [None, None, None]

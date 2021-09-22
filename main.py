@@ -54,29 +54,43 @@ def args():
 
     return args
 
-
+'''
+############## 1. 程序入口，创建参数对象，更新参数 #####################
+'''
 args = args()
 update_config(cfg, args)
 
+# 使参数节点及其子节点都可变
 cfg.defrost()
+# 分布式训练的设备数量
 num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
 print('number of gpus: {}'.format(num_gpus))
 cfg.DISTRIBUTED = num_gpus > 1
 
+# 如果分布式训练，则给torch设定参数
 if cfg.DISTRIBUTED:
     torch.cuda.set_device(args.local_rank)
     torch.distributed.init_process_group(
         backend="nccl", init_method="env://"
     )
     synchronize()
+# 设定分布式训练的节点秩
 cfg.LOCAL_RANK = args.local_rank
+# 关闭参数节点，不再改变
 cfg.freeze()
 
+'''
+############## 2. 对torch设定一些相关参数 ##########################
+'''
+# 确保每次生成的随机数固定，使实验结果一致
 torch.manual_seed(cfg.SEED)
 torch.cuda.manual_seed(cfg.SEED)
 
-# create logger
+'''
+####### 创建logger
+'''
 if is_main_process():
+    # 如果没有debug目录。则建立debug目录，cfg.LOGDIR = ./checkpoints/debug
     if not os.path.isdir(cfg.LOGDIR):
         os.makedirs(cfg.LOGDIR)
 
@@ -85,8 +99,12 @@ if is_main_process():
     print('creating log file', logfile_path)
     logger.add(logfile_path, format="{time} {level} {message}", level="INFO")
 
+    # 建立tensorboard的日志记录目录，根据这次运行的时间建立
     tb_writer = SummaryWriter(cfg.LOGDIR)
 
+'''
+###### 参数配置扩充
+'''
 # Augmentation
 if cfg.MODE == 'train':
     n_views = cfg.TRAIN.N_VIEWS
@@ -112,11 +130,17 @@ transform += [transforms.ResizeImage((640, 480)),
 
 transforms = transforms.Compose(transform)
 
-# dataset, dataloader
+'''
+###### 建立数据集对象
+'''
+# dataset
+# 返回一个对象值的属性:ScanNetDataset还是DemoDataset
 MVSDataset = find_dataset_def(cfg.DATASET)
 train_dataset = MVSDataset(cfg.TRAIN.PATH, "train", transforms, cfg.TRAIN.N_VIEWS, len(cfg.MODEL.THRESHOLDS) - 1)
 test_dataset = MVSDataset(cfg.TEST.PATH, "test", transforms, cfg.TEST.N_VIEWS, len(cfg.MODEL.THRESHOLDS) - 1)
 
+# dataloader
+# 如果分布式训练
 if cfg.DISTRIBUTED:
     train_sampler = DistributedSampler(train_dataset, shuffle=False)
     TrainImgLoader = torch.utils.data.DataLoader(
@@ -136,14 +160,19 @@ if cfg.DISTRIBUTED:
         pin_memory=True,
         drop_last=False
     )
+# 如果不是分布式训练
 else:
     TrainImgLoader = DataLoader(train_dataset, cfg.BATCH_SIZE, shuffle=False, num_workers=cfg.TRAIN.N_WORKERS,
                                 drop_last=True)
     TestImgLoader = DataLoader(test_dataset, cfg.BATCH_SIZE, shuffle=False, num_workers=cfg.TEST.N_WORKERS,
                                drop_last=False)
 
+'''
+###### 创建网络模型
+'''
 # model, optimizer
 model = NeuralRecon(cfg)
+# 分布式训练模型
 if cfg.DISTRIBUTED:
     model.cuda()
     model = DistributedDataParallel(
@@ -152,15 +181,26 @@ if cfg.DISTRIBUTED:
         broadcast_buffers=False,
         find_unused_parameters=True
     )
+# 非分布式训练模型
 else:
     model = torch.nn.DataParallel(model, device_ids=[0])
     model.cuda()
+'''
+###### 建立优化器
+'''
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, betas=(0.9, 0.999), weight_decay=cfg.TRAIN.WD)
 
 
+'''
+开始训练的主函数
+'''
 # main function
 def train():
+    '''
+    加载参数
+    '''
     # load parameters
+    # 如果参数是 RESUME 继续，
     start_epoch = 0
     if cfg.RESUME:
         saved_models = [fn for fn in os.listdir(cfg.LOGDIR) if fn.endswith(".ckpt")]
@@ -175,6 +215,7 @@ def train():
             optimizer.param_groups[0]['initial_lr'] = state_dict['optimizer']['param_groups'][0]['lr']
             optimizer.param_groups[0]['lr'] = state_dict['optimizer']['param_groups'][0]['lr']
             start_epoch = state_dict['epoch'] + 1
+    # 如果不是继续，并且设定了载入的checkpoint
     elif cfg.LOADCKPT != '':
         # load checkpoint file specified by args.loadckpt
         logger.info("loading model {}".format(cfg.LOADCKPT))
@@ -192,6 +233,7 @@ def train():
     lr_scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones, gamma=lr_gamma,
                                                         last_epoch=start_epoch - 1)
 
+    # 训练的主循环
     for epoch_idx in range(start_epoch, cfg.TRAIN.EPOCHS):
         logger.info('Epoch {}:'.format(epoch_idx))
         lr_scheduler.step()
@@ -199,6 +241,7 @@ def train():
         TrainImgLoader.dataset.tsdf_cashe = {}
         # training
         for batch_idx, sample in enumerate(TrainImgLoader):
+            # 总体的步长
             global_step = len(TrainImgLoader) * epoch_idx + batch_idx
             do_summary = global_step % cfg.SUMMARY_FREQ == 0
             start_time = time.time()
@@ -209,11 +252,12 @@ def train():
                                                                                          batch_idx,
                                                                                          len(TrainImgLoader), loss,
                                                                                          time.time() - start_time))
+            # 每隔cfg.SUMMARY_FREQ做一次总结, 20次
             if do_summary and is_main_process():
                 save_scalars(tb_writer, 'train', scalar_outputs, global_step)
             del scalar_outputs
 
-        # checkpoint
+        # checkpoint， 每隔多少个epoch存一次
         if (epoch_idx + 1) % cfg.SAVE_FREQ == 0 and is_main_process():
             torch.save({
                 'epoch': epoch_idx,
