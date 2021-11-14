@@ -7,10 +7,10 @@ MODE: 'train'
 
 TRAIN:
   PATH: 'data/scannet'
-  EPOCHS: 991
+  EPOCHS: 50 
   N_VIEWS: 9
   LR: 1e-3
-  N_WORKERS: 64
+  N_WORKERS: 48
   LREPOCHS: '12,24,48:2'
 
 TEST:
@@ -29,11 +29,11 @@ MODEL:
     ARC: 'fpn-mnas-1'
 
   FUSION:
-    FUSION_ON: True
+    FUSION_ON: True 
     HIDDEN_DIM: 64
 
     AVERAGE: False
-    FULL: True
+    FULL: True 
 
   LW: [1.0, 0.8, 0.64]
 

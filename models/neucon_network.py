@@ -22,7 +22,7 @@ class NeuConNet(nn.Module):
         self.cfg = cfg
         self.n_scales = len(cfg.THRESHOLDS) - 1 # MODEL.THRESHOLDS = [0, 0, 0]，默认结果输出为2
 
-        alpha = int(self.cfg.BACKBONE2D.ARC.split('-')[-1]) # alpha默认结果为1
+        alpha = int(self.cfg.BACKBONE2D.ARC.split('-')[-1]) # 根据配置文件，alpha默认结果为1
         # ch_in = [81, 139, 75, 51]
         ch_in = [80 * alpha + 1, 96 + 40 * alpha + 2 + 1, 48 + 24 * alpha + 2 + 1, 24 + 24 + 2 + 1]
         channels = [96, 48, 24]
@@ -31,9 +31,9 @@ class NeuConNet(nn.Module):
         if self.cfg.FUSION.FUSION_ON:
             # GRU Fusion
             self.gru_fusion = GRUFusion(cfg, channels)
-        # sparse conv
+        # sparse conv 稀疏卷积
         self.sp_convs = nn.ModuleList()
-        # MLPs that predict tsdf and occupancy.
+        # MLPs that predict tsdf and occupancy. 预测tsdf和occupancy的MLP
         self.tsdf_preds = nn.ModuleList()
         self.occ_preds = nn.ModuleList()
         for i in range(len(cfg.THRESHOLDS)):
@@ -105,6 +105,7 @@ class NeuConNet(nn.Module):
             'tsdf_occ_loss_X':         (Tensor), multi level loss
         }
         '''
+        # batch_size
         bs = features[0][0].shape[0]
         pre_feat = None
         pre_coords = None
@@ -114,6 +115,7 @@ class NeuConNet(nn.Module):
             interval = 2 ** (self.n_scales - i)
             scale = self.n_scales - i
 
+            # 如果是第一个尺度，创建新的坐标系
             if i == 0:
                 # ----generate new coords----
                 coords = generate_grid(self.cfg.N_VOX, interval)[0]

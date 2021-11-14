@@ -54,7 +54,7 @@ class MnasMulti(nn.Module):
         # 最终通道数 80
         final_chs = depths[4]
         # inner1: 输入通道数40，输出通道数80，卷积核大小1 
-        # inner2: 输入通道数40，输出通道数80，卷积核大小1
+        # inner2: 输入通道数24，输出通道数80，卷积核大小1
         self.inner1 = nn.Conv2d(depths[3], final_chs, 1, bias=True)
         self.inner2 = nn.Conv2d(depths[2], final_chs, 1, bias=True)
 

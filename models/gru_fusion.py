@@ -17,6 +17,7 @@ class GRUFusion(nn.Module):
         super(GRUFusion, self).__init__()
         self.cfg = cfg
         # replace tsdf in global tsdf volume by direct substitute corresponding voxels
+        # 通过直接替换相应的体素替换全局tsdf体积中的tsdf
         self.direct_substitude = direct_substitute
 
         if direct_substitute:
@@ -207,6 +208,7 @@ class GRUFusion(nn.Module):
         :return: tsdf_target_all: (Tensor), tsdf ground truth, (N', 1)
         :return: occ_target_all: (Tensor), occupancy ground truth, (N', 1)
         '''
+        # 初始状态是[None, None, None], scale=2
         if self.global_volume[scale] is not None:
             # delete computational graph to save memory
             self.global_volume[scale] = self.global_volume[scale].detach()

@@ -223,7 +223,7 @@ def process_with_single_worker(args, scannet_files):
             cam_pose_all.update({id: cam_pose})
             # color_all.update({id: color_image})
 
-        save_tsdf_full(args, scene, cam_intr, depth_all, cam_pose_all, color_all, save_mesh=False)
+        save_tsdf_full(args, scene, cam_intr, depth_all, cam_pose_all, color_all, save_mesh=True)
         save_fragment_pkl(args, scene, cam_intr, depth_all, cam_pose_all)
 
 
@@ -262,6 +262,7 @@ if __name__ == "__main__":
     all_proc = args.n_proc * args.n_gpu
 
     ray.init(num_cpus=all_proc * (args.num_workers + 1), num_gpus=args.n_gpu)
+    #ray.init(num_cpus=45, num_gpus=args.n_gpu)
 
     if args.dataset == 'scannet':
         if not args.test:
@@ -282,3 +283,5 @@ if __name__ == "__main__":
 
     if args.dataset == 'scannet':
         generate_pkl(args)
+
+    # ray.shutdown()

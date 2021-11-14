@@ -67,7 +67,7 @@ num_gpus = int(os.environ["WORLD_SIZE"]) if "WORLD_SIZE" in os.environ else 1
 print('number of gpus: {}'.format(num_gpus))
 cfg.DISTRIBUTED = num_gpus > 1
 
-# 如果分布式训练，则给torch设定参数
+# 如果分布式训练,在使用 distributed 包的任何其他函数之前，需要使用 init_process_group 初始化进程组，同时初始化 distributed 包
 if cfg.DISTRIBUTED:
     torch.cuda.set_device(args.local_rank)
     torch.distributed.init_process_group(
@@ -107,18 +107,19 @@ if is_main_process():
 '''
 # Augmentation
 if cfg.MODE == 'train':
-    n_views = cfg.TRAIN.N_VIEWS
-    random_rotation = cfg.TRAIN.RANDOM_ROTATION_3D
-    random_translation = cfg.TRAIN.RANDOM_TRANSLATION_3D
-    paddingXY = cfg.TRAIN.PAD_XY_3D
-    paddingZ = cfg.TRAIN.PAD_Z_3D
+    n_views = cfg.TRAIN.N_VIEWS # 9
+    random_rotation = cfg.TRAIN.RANDOM_ROTATION_3D # True
+    random_translation = cfg.TRAIN.RANDOM_TRANSLATION_3D # True
+    paddingXY = cfg.TRAIN.PAD_XY_3D # .1
+    paddingZ = cfg.TRAIN.PAD_Z_3D # .025
 else:
-    n_views = cfg.TEST.N_VIEWS
+    n_views = cfg.TEST.N_VIEWS # 9
     random_rotation = False
     random_translation = False
     paddingXY = 0
     paddingZ = 0
 
+# 变换函数的列表
 transform = []
 transform += [transforms.ResizeImage((640, 480)),
               transforms.ToTensor(),
@@ -140,27 +141,27 @@ train_dataset = MVSDataset(cfg.TRAIN.PATH, "train", transforms, cfg.TRAIN.N_VIEW
 test_dataset = MVSDataset(cfg.TEST.PATH, "test", transforms, cfg.TEST.N_VIEWS, len(cfg.MODEL.THRESHOLDS) - 1)
 
 # dataloader
-# 如果分布式训练
+# 如果分布式训练，有分布式采样
 if cfg.DISTRIBUTED:
     train_sampler = DistributedSampler(train_dataset, shuffle=False)
     TrainImgLoader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=cfg.BATCH_SIZE,
-        sampler=train_sampler,
-        num_workers=cfg.TRAIN.N_WORKERS,
-        pin_memory=True,
-        drop_last=True
+        batch_size=cfg.BATCH_SIZE, # 1
+        sampler=train_sampler, # distributed sampler
+        num_workers=cfg.TRAIN.N_WORKERS, # 48
+        pin_memory=True, # 锁页内存，不会与虚拟内存交换，读入GPU显存更快
+        drop_last=True # 舍弃除以batch_size后剩余的余数个数据
     )
     test_sampler = DistributedSampler(test_dataset, shuffle=False)
     TestImgLoader = torch.utils.data.DataLoader(
         test_dataset,
-        batch_size=cfg.BATCH_SIZE,
+        batch_size=cfg.BATCH_SIZE, # 1
         sampler=test_sampler,
-        num_workers=cfg.TEST.N_WORKERS,
+        num_workers=cfg.TEST.N_WORKERS, # 4
         pin_memory=True,
         drop_last=False
     )
-# 如果不是分布式训练
+# 如果不是分布式训练，没有分布式采样
 else:
     TrainImgLoader = DataLoader(train_dataset, cfg.BATCH_SIZE, shuffle=False, num_workers=cfg.TRAIN.N_WORKERS,
                                 drop_last=True)
@@ -188,6 +189,7 @@ else:
 '''
 ###### 建立优化器
 '''
+# lr=1e-3
 optimizer = torch.optim.Adam(model.parameters(), lr=cfg.TRAIN.LR, betas=(0.9, 0.999), weight_decay=cfg.TRAIN.WD)
 
 
@@ -203,11 +205,13 @@ def train():
     # 如果参数是 RESUME 继续，
     start_epoch = 0
     if cfg.RESUME:
+        # checkpoints目录下的保存的模型，并对模型进行排序
         saved_models = [fn for fn in os.listdir(cfg.LOGDIR) if fn.endswith(".ckpt")]
         saved_models = sorted(saved_models, key=lambda x: int(x.split('_')[-1].split('.')[0]))
         if len(saved_models) != 0:
-            # use the latest checkpoint file
+            # use the latest checkpoint file，使用最后一个模型
             loadckpt = os.path.join(cfg.LOGDIR, saved_models[-1])
+            # 在屏幕显示正在恢复训练，和恢复的模型
             logger.info("resuming " + str(loadckpt))
             map_location = {'cuda:%d' % 0: 'cuda:%d' % cfg.LOCAL_RANK}
             state_dict = torch.load(loadckpt, map_location=map_location)
@@ -319,6 +323,9 @@ def test(from_latest=False):
 
 
 def train_sample(sample):
+    '''
+    每个Epoch的训练函数
+    '''
     model.train()
     optimizer.zero_grad()
 

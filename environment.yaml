@@ -5,11 +5,12 @@ channels:
   - pytorch
   - defaults
   - conda-forge
+  - nvidia
 dependencies:
-  - python=3.7.9
-  - pytorch=1.6.0
-  - torchvision=0.7.0
-  - cudatoolkit=10.2
+  - python=3.8
+  - pytorch
+  - torchvision
+  - cudatoolkit=11.1
   - ipython
   - tqdm
   - numba

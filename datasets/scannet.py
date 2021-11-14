@@ -9,20 +9,20 @@ from torch.utils.data import Dataset
 class ScanNetDataset(Dataset):
     def __init__(self, datapath, mode, transforms, nviews, n_scales):
         super(ScanNetDataset, self).__init__()
-        self.datapath = datapath
-        self.mode = mode
-        self.n_views = nviews
-        self.transforms = transforms
-        self.tsdf_file = 'all_tsdf_{}'.format(self.n_views)
+        self.datapath = datapath # 'data/scannet'
+        self.mode = mode # ‘train'
+        self.n_views = nviews # 9
+        self.transforms = transforms # 函数集
+        self.tsdf_file = 'all_tsdf_{}'.format(self.n_views) # tsdf文件
 
         assert self.mode in ["train", "val", "test"]
-        self.metas = self.build_list()
+        self.metas = self.build_list() # /home/zt/Datasets/ScanNet/all_tsdf_9/fragments_train.pkl
         if mode == 'test':
             self.source_path = 'scans_test'
         else:
             self.source_path = 'scans'
 
-        self.n_scales = n_scales
+        self.n_scales = n_scales # 2
         self.epoch = None
         self.tsdf_cashe = {}
         self.max_cashe = 100

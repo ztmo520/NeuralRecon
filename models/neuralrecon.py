@@ -18,8 +18,8 @@ class NeuralRecon(nn.Module):
         # 根据训练配置文件，这里alpha = 1.0
         alpha = float(self.cfg.BACKBONE2D.ARC.split('-')[-1])
         # other hparams
-        self.pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(-1, 1, 1)
-        self.pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).view(-1, 1, 1)
+        self.pixel_mean = torch.Tensor(cfg.MODEL.PIXEL_MEAN).view(-1, 1, 1) # MODEL.PIXEL_MEAN = [103.53, 116.28, 123.675]
+        self.pixel_std = torch.Tensor(cfg.MODEL.PIXEL_STD).view(-1, 1, 1) # MODEL.PIXEL_STD = [1., 1., 1.]
         self.n_scales = len(self.cfg.THRESHOLDS) - 1
 
         # networks
@@ -70,12 +70,18 @@ class NeuralRecon(nn.Module):
             'total_loss':              (Tensor), total loss
         }
         '''
+        # 如果是tensor就放到cuda，否则原样返回
         inputs = tocuda(inputs)
         outputs = {}
+        # 图像序列tuple,每个里面是9张图像
         imgs = torch.unbind(inputs['imgs'], 1)
 
         # image feature extraction
         # in: images; out: feature maps
+        # features也是一个tuple,9张图像的特征tuple,每个tuple是3个tensor，对应3个scale
+        # 0: [1, 24, 120, 160]
+        # 1: [1, 40, 60, 80]
+        # 2: [1, 80, 30 ,40]
         features = [self.backbone2d(self.normalizer(img)) for img in imgs]
 
         # coarse-to-fine decoder: SparseConv and GRU Fusion.
