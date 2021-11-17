@@ -67,6 +67,9 @@ class MnasMulti(nn.Module):
         # out_channels最终为 [80,40,24]
 
     def forward(self, x):
+        '''
+        输入是单张图像 torch.size[1, 3, 480, 640]
+        '''
         # 计算到mnasnet1_0的 '10'层
         conv0 = self.conv0(x)
         conv1 = self.conv1(conv0)
@@ -92,6 +95,10 @@ class MnasMulti(nn.Module):
         # 中间结果经过out3: 输入通道数80，输出通道数24，卷积核大小3，填充1
         out = self.out3(intra_feat)
         outputs.append(out)
+
+        '''
+        输出是一个list
+        '''
 
         # 取从后向前的元素, [ 1 2 3 4 5 ] -> [ 5 4 3 2 1 ]
         return outputs[::-1]

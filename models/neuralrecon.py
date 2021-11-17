@@ -74,8 +74,14 @@ class NeuralRecon(nn.Module):
         inputs = tocuda(inputs)
         outputs = {}
         # 图像序列tuple,每个里面是9张图像
+        # imgs是一个tuple, 每个图像的size: torch.Size([1, 3, 480, 640])
         imgs = torch.unbind(inputs['imgs'], 1)
 
+        '''
+        第一步，提取特征
+            1. 对每张图像进行了归一化
+            2. 送入特征提取网络
+        '''
         # image feature extraction
         # in: images; out: feature maps
         # features也是一个tuple,9张图像的特征tuple,每个tuple是3个tensor，对应3个scale
@@ -86,6 +92,9 @@ class NeuralRecon(nn.Module):
 
         # coarse-to-fine decoder: SparseConv and GRU Fusion.
         # in: image feature; out: sparse coords and tsdf
+        # 最终输出的是每个点的坐标以及每个点的tsdf值
+        #           coords： torch.Size([点的数量, 4])
+        #           tsdf:    torch.Size([点的数量, 1])
         outputs, loss_dict = self.neucon_net(features, inputs, outputs)
 
         # fuse to global volume.

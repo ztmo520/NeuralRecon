@@ -112,60 +112,95 @@ class NeuConNet(nn.Module):
         loss_dict = {}
         # ----coarse to fine----
         for i in range(self.cfg.N_LAYER):
+            # interval分别为4, 2, 1
+            # scale分别为2, 1, 0
             interval = 2 ** (self.n_scales - i)
             scale = self.n_scales - i
 
             # 如果是第一个尺度，创建新的坐标系
             if i == 0:
                 # ----generate new coords----
+                # torch.Size([3, 13824]) 第一个维度是坐标，第二个维度是所有的点，24x24x24
                 coords = generate_grid(self.cfg.N_VOX, interval)[0]
                 up_coords = []
                 for b in range(bs):
+                    # 这里up_coords在coords的基础上加了一个维度，这个维度里所有元素都是1
                     up_coords.append(torch.cat([torch.ones(1, coords.shape[-1]).to(coords.device) * b, coords]))
+                # up_coords: torch.Size([13824, 4])
                 up_coords = torch.cat(up_coords, dim=1).permute(1, 0).contiguous()
             else:
                 # ----upsample coords----
+                # up_feat:   torch.Size([14120, 98])
+                # up_coords: torch.Size([13824, 4])
+                #            torch.Size([14120, 4])
                 up_feat, up_coords = self.upsample(pre_feat, pre_coords, interval)
 
             # ----back project----
+            # feats: torch.Size([9, 1, 80, 30, 40]) 9张图像的feature
+            #        torch.Size([9, 1, 40, 60, 80])
+            #        torch.Size([9, 1, 24, 120, 160])
+            '''这里是将9张图当前某一个尺度的特征拼在一起'''
             feats = torch.stack([feat[scale] for feat in features])
+            # KRcam: torch.Size([9, 1, 4, 4])
             KRcam = inputs['proj_matrices'][:, :, scale].permute(1, 0, 2, 3).contiguous()
+            # volume: torch.Size([13824, 81])   最开始的点， 80个通道又+1
+            #         torch.Size([14120, 41])
+            # count:  torch.Size([13824])       
+            #         torch.Size([14120])
+            '''9张图在某一个尺度的特征，根据KRcam（投影矩阵）反投影到volume'''
             volume, count = back_project(up_coords, inputs['vol_origin_partial'], self.cfg.VOXEL_SIZE, feats,
                                          KRcam)
             grid_mask = count > 1
 
             # ----concat feature from last stage----
             if i != 0:
+                # feat: torch.Size([14120, 139])
                 feat = torch.cat([volume, up_feat], dim=1)
             else:
+                # feat: torch.Size([13824, 81])
                 feat = volume
 
             if not self.cfg.FUSION.FUSION_ON:
                 tsdf_target, occ_target = self.get_target(up_coords, inputs, scale)
 
+            '''转换到对齐的相机的坐标系'''
             # ----convert to aligned camera coordinate----
+            # r_coords: torch.Size([13824, 4])
             r_coords = up_coords.detach().clone().float()
             for b in range(bs):
                 batch_ind = torch.nonzero(up_coords[:, 0] == b).squeeze(1)
                 coords_batch = up_coords[batch_ind][:, 1:].float()
                 coords_batch = coords_batch * self.cfg.VOXEL_SIZE + inputs['vol_origin_partial'][b].float()
                 coords_batch = torch.cat((coords_batch, torch.ones_like(coords_batch[:, :1])), dim=1)
+                # coords_batch: torch.Size([13824, 3])
                 coords_batch = coords_batch @ inputs['world_to_aligned_camera'][b, :3, :].permute(1, 0).contiguous()
                 r_coords[batch_ind, 1:] = coords_batch
 
             # batch index is in the last position
             r_coords = r_coords[:, [1, 2, 3, 0]]
 
+            '''稀疏3D卷积'''
             # ----sparse conv 3d backbone----
             point_feat = PointTensor(feat, r_coords)
+            # feat: torch.Size([13824, 96])
+            #       torch.Size([14120, 48])
+            '''self.sp_convs是一个Modulelist,里面有3个稀疏卷积网络，分别对应不同的尺度，feat是稀疏卷积后的结果'''
             feat = self.sp_convs[i](point_feat)
 
             # ----gru fusion----
             if self.cfg.FUSION.FUSION_ON:
+                # up_coords: torch.Size([13824, 4])         torch.Size([14120, 4])      torch.Size([49168, 4])
+                # feat: torch.Size([13824, 96])             torch.Size([14120, 48])     torch.Size([49168, 24])
+                # tsdf_target: torch.Size([13824, 1])       torch.Size([14120, 1])      torch.Size([49168, 1])
+                # occ_target: torch.Size([13824, 1])        torch.Size([14120, 1])      torch.Size([49168, 1])
                 up_coords, feat, tsdf_target, occ_target = self.gru_fusion(up_coords, feat, inputs, i)
                 if self.cfg.FUSION.FULL:
+                    # grid_mask: torch.Size([13824])
                     grid_mask = torch.ones_like(feat[:, 0]).bool()
 
+            # torch.Size([13824, 1])
+            # torch.Size([14120, 1])
+            # torch.Size([49168, 1])
             tsdf = self.tsdf_preds[i](feat)
             occ = self.occ_preds[i](feat)
 
@@ -182,6 +217,7 @@ class NeuConNet(nn.Module):
             occupancy = occ.squeeze(1) > self.cfg.THRESHOLDS[i]
             occupancy[grid_mask == False] = False
 
+            # 第三次 24584
             num = int(occupancy.sum().data.cpu())
 
             if num == 0:
@@ -195,6 +231,8 @@ class NeuConNet(nn.Module):
                 ind = torch.nonzero(occupancy)
                 occupancy[ind[choice]] = False
 
+            # pre_coords: torch.Size([1765, 4])             torch.Size([24584, 4])
+            # up_coords:  torch.Size([13824, 4])            torch.Size([49168, 4])
             pre_coords = up_coords[occupancy]
             for b in range(bs):
                 batch_ind = torch.nonzero(pre_coords[:, 0] == b).squeeze(1)

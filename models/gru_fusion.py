@@ -289,8 +289,10 @@ class GRUFusion(nn.Module):
                 h = PointTensor(global_values, r_coords)
                 x = PointTensor(values, r_coords)
 
+                # torch.Size([13824, 96])
                 values = self.fusion_nets[scale](h, x)
 
+            '''通过直接替换相应的体素替换全局隐藏状态/tsdf volume中的隐藏状态/tsdf'''
             # feed back to global volume (direct substitute)
             self.update_map(values, updated_coords, target_volume, valid, valid_target, relative_origin, scale)
 

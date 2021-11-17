@@ -6,9 +6,9 @@ def back_project(coords, origin, voxel_size, feats, KRcam):
     '''
     Unproject the image fetures to form a 3D (sparse) feature volume
 
-    :param coords: coordinates of voxels,
-    dim: (num of voxels, 4) (4 : batch ind, x, y, z)
-    :param origin: origin of the partial voxel volume (xyz position of voxel (0, 0, 0))
+    :param coords: coordinates of voxels,                                               体素的坐标
+    dim: (num of voxels, 4) (4 : batch ind, x, y, z)                                    (bs, x, y, z)
+    :param origin: origin of the partial voxel volume (xyz position of voxel (0, 0, 0)) 体素volume的原点
     dim: (batch size, 3) (3: x, y, z)
     :param voxel_size: floats specifying the size of a voxel
     :param feats: image features
@@ -26,31 +26,42 @@ def back_project(coords, origin, voxel_size, feats, KRcam):
     count = torch.zeros(coords.shape[0]).cuda()
 
     for batch in range(bs):
+        # 该batch中各个体素的索引 torch.Size([13824])
         batch_ind = torch.nonzero(coords[:, 0] == batch).squeeze(1)
+        # 坐标的索引 torch.Size([13824, 3])
         coords_batch = coords[batch_ind][:, 1:]
 
+        # torch.Size([13824, 3])
         coords_batch = coords_batch.view(-1, 3)
+        # torch.Size([1, 3])
         origin_batch = origin[batch].unsqueeze(0)
+        # 当前batch的特征 torch.Size([9, 80, 30, 40])
         feats_batch = feats[:, batch]
+        # 当前batch的投影矩阵 torch.Size([9, 4, 4])
         proj_batch = KRcam[:, batch]
 
+        # 将体素坐标变为grid的坐标，也就是乘以每个voxel的尺寸，再加上原点voxel的坐标
         grid_batch = coords_batch * voxel_size + origin_batch.float()
+        # torch.Size([9, 4, 13824])
         rs_grid = grid_batch.unsqueeze(0).expand(n_views, -1, -1)
         rs_grid = rs_grid.permute(0, 2, 1).contiguous()
         nV = rs_grid.shape[-1]
         rs_grid = torch.cat([rs_grid, torch.ones([n_views, 1, nV]).cuda()], dim=1)
 
         # Project grid
+        # @数学上的矩阵相乘，*对应元素相乘, torch.Size([9, 4, 13824])
         im_p = proj_batch @ rs_grid
         im_x, im_y, im_z = im_p[:, 0], im_p[:, 1], im_p[:, 2]
         im_x = im_x / im_z
         im_y = im_y / im_z
 
+        # torch.Size([9, 1, 13824, 2])
         im_grid = torch.stack([2 * im_x / (w - 1) - 1, 2 * im_y / (h - 1) - 1], dim=-1)
         mask = im_grid.abs() <= 1
         mask = (mask.sum(dim=-1) == 2) & (im_z > 0)
 
         feats_batch = feats_batch.view(n_views, c, h, w)
+        # torch.Size([9, 1, 13824, 2])
         im_grid = im_grid.view(n_views, 1, -1, 2)
         features = grid_sample(feats_batch, im_grid, padding_mode='zeros', align_corners=True)
 

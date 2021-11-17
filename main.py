@@ -329,6 +329,8 @@ def train_sample(sample):
     model.train()
     optimizer.zero_grad()
 
+    # outputs: torch.Size([24584, 4])  coords和tsdf
+    # loss_dict: 0,1,2,total
     outputs, loss_dict = model(sample)
     loss = loss_dict['total_loss']
     loss.backward()
