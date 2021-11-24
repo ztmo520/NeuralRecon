@@ -130,9 +130,6 @@ class NeuConNet(nn.Module):
                 up_coords = torch.cat(up_coords, dim=1).permute(1, 0).contiguous()
             else:
                 # ----upsample coords----
-                # up_feat:   torch.Size([14120, 98])
-                # up_coords: torch.Size([13824, 4])
-                #            torch.Size([14120, 4])
                 up_feat, up_coords = self.upsample(pre_feat, pre_coords, interval)
 
             # ----back project----
@@ -187,6 +184,20 @@ class NeuConNet(nn.Module):
             '''self.sp_convs是一个Modulelist,里面有3个稀疏卷积网络，分别对应不同的尺度，feat是稀疏卷积后的结果'''
             feat = self.sp_convs[i](point_feat)
 
+            '''
+            GRU Fusion
+
+            输入：
+                up_coords:  体素的坐标，来自于上一个尺度的上采样
+                feat:       上一个尺度的特征，也进行了上采样特征up_feat跟volume的拼接
+                inputs：    原始输入
+                i:          当前尺度
+            输出：
+                up_coords:  新的坐标
+                feat:       新的特征
+                tsdf_target:目标tsdf
+                occ_target: 目标占据
+            '''
             # ----gru fusion----
             if self.cfg.FUSION.FUSION_ON:
                 # up_coords: torch.Size([13824, 4])         torch.Size([14120, 4])      torch.Size([49168, 4])

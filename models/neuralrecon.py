@@ -90,6 +90,9 @@ class NeuralRecon(nn.Module):
         # 2: [1, 80, 30 ,40]
         features = [self.backbone2d(self.normalizer(img)) for img in imgs]
 
+        '''
+        第二步，稀疏卷积、GRU Fusion
+        '''
         # coarse-to-fine decoder: SparseConv and GRU Fusion.
         # in: image feature; out: sparse coords and tsdf
         # 最终输出的是每个点的坐标以及每个点的tsdf值
